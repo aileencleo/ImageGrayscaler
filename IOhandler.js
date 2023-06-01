@@ -1,0 +1,100 @@
+const unzipper = require("unzipper"),
+  fs = require("fs"),
+  PNG = require("pngjs").PNG,
+  path = require("path"),
+  { v4: uuidv4 } = require("uuid");
+
+/**
+ * Description: decompress file from given pathIn, write to given pathOut
+ *
+ * @param {string} pathIn
+ * @param {string} pathOut
+ * @return {promise}
+ */
+const unzip = (pathIn, pathOut) => {
+  return new Promise((resolve, reject) => {
+    fs.createReadStream(pathIn)
+      .pipe(unzipper.Extract({ path: pathOut }))
+      .on("close", () => {
+        resolve(pathOut);
+      })
+      .on("error", (err) => {
+        reject(err);
+      });
+  });
+};
+
+/**
+ * Description: read all the png files from given directory and return Promise containing array of each png file path
+ *
+ * @param {string} path
+ * @return {promise}
+ */
+const readDir = (dir) => {
+  return new Promise((resolve, reject) => {
+    fs.readdir(dir, (err, files) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+
+      const pngFiles = files.filter((file) => path.extname(file) === ".png");
+      const filePaths = pngFiles.map((file) => path.join(dir, file));
+
+      resolve(filePaths);
+    });
+  });
+};
+
+/**
+ * Description: Read in png file by given pathIn,
+ * convert to grayscale and write to given pathOut
+ *
+ * @param {string} pathIn
+ * @param {string} pathOut
+ * @return {Promise}
+ */
+const grayScale = (pathIn, pathOut) => {
+  return new Promise((resolve, reject) => {
+    const inputStream = fs.createReadStream(pathIn);
+    const png = new PNG();
+
+    inputStream
+      .pipe(png)
+      .on("parsed", function () {
+        for (let y = 0; y < png.height; y++) {
+          for (let x = 0; x < png.width; x++) {
+            const idx = (png.width * y + x) << 2;
+            const gray = (png.data[idx] + png.data[idx + 1] + png.data[idx + 2]) / 3;
+            png.data[idx] = gray;
+            png.data[idx + 1] = gray;
+            png.data[idx + 2] = gray;
+          }
+        }
+
+        const fileName = `${uuidv4()}.png`;
+        const outputPath = path.join(pathOut, fileName);
+
+        const outputStream = fs.createWriteStream(outputPath);
+        png.pack().pipe(outputStream);
+
+        outputStream.on("finish", () => {
+          resolve();
+        });
+
+        outputStream.on("error", (err) => {
+          reject(err);
+        });
+      });
+
+    inputStream.on("error", (err) => {
+      reject(err);
+    });
+  });
+};
+
+module.exports = {
+  unzip,
+  readDir,
+  grayScale,
+};
